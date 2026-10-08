@@ -6,7 +6,7 @@ EOS = "<|endoftext|>"
 CKPT, TOK = "model.pt", "tokenizer.json"
 device = "cpu"
 
-class Block(nn.Module)
+class Block(nn.Module):
     def __init__(self, d, n_head):
         super().__init__()
         self.n_head = n_head
@@ -23,8 +23,8 @@ class Block(nn.Module)
         x = x + self.proj(a.transpose(1, 2).reshape(B, T, C))
         return x + self.mlp(self.ln2(x))
 
-    class GPT(nn.Module):
-        def __init__(self, vocab, block, d, n_layer, n_head):
+class GPT(nn.Module):
+    def __init__(self, vocab, block, d, n_layer, n_head):
             super().__init__()
             self.block = block
             self.tok = nn.Embedding(vocab, d)
@@ -49,8 +49,8 @@ class Block(nn.Module)
         loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1)) if targets is not None else None
         return logits, loss
 
-        @torch.no_grad()
-        def generate(self, idx, max_new=200, temperature=0.8 top_k=40, stop_id=None):
+    @torch.no_grad()
+    def generate(self, idx, max_new=200, temperature=0.8, top_k=40, stop_id=None):
             for _ in range(max_new):
                 logits, _ = self(idx[:, -self.block:])
                 logits = logits[:, -1] / max(temperature, 1e-5)
@@ -61,14 +61,14 @@ class Block(nn.Module)
                 idx = torch.cat([idx, nxt], dim=1)
                 if stop_id is not None and nxt.item() == stop_id:
                     break
-                return idx
+            return idx
 
 def load_texts(args):
     if args.text:
         raw = open(args.text, "r", encoding="utf-8").read()
         return [p for p in raw.split("\n\n") if p.strip()]
-    from datasets imort load_dataset
-    ds = load_dataset("TinyStories", split=f"train[:{args.stories}]")
+    from datasets import load_dataset
+    ds = load_dataset("roneneldan/TinyStories", split=f"train[:{args.stories}]")
     return ds["text"]
 
  
@@ -82,29 +82,29 @@ def build_tokenizer(texts, vocab_size):
     tok.save(TOK)
     return tok
 
- def train(args):
-    texts = loaf_texts(args)
-    printf("Loaded %d stories" % len(texts))
+def train(args):
+    texts = load_texts(args)
+    print("Loaded %d stories" % len(texts))
     tok = build_tokenizer(texts, args.vocab)
     eos = tok.token_to_id(EOS)
 
     ids = []
     for enc in tok.encode_batch(list(texts)):
         ids += enc.ids + [eos]
-        data = torch.tensor(ids, dtype=torch.long)
-        n = int(0.95 * len(data))
-        train_data, val_data = data[:n], data[n:]
-        printf("Training on %d tokens, validating on %d tokens" % (len(train_data), len(val_data)))
+    data = torch.tensor(ids, dtype=torch.long)
+    n = int(0.95 * len(data))
+    train_data, val_data = data[:n], data[n:]
+    print("Training on %d tokens, validating on %d tokens" % (len(train_data), len(val_data)))
 
-        cfg = dict(vocab=tok.get_vocab_size(), block=args.block, d=args.dim, n_layer=args.layer, n_head=args.head)
-        model = GPT(**cfg).to(device)
-        printf("Training %dM parameters" % (sum(p.numel() for p in model.parameters()) / 1e6))
+    cfg = dict(vocab=tok.get_vocab_size(), block=args.block, d=args.dim, n_layer=args.layers, n_head=args.heads)
+    model = GPT(**cfg).to(device)
+    print("Training %dM parameters" % (sum(p.numel() for p in model.parameters()) / 1e6))
 
-        def batch(split):
+    def batch(split):
             d = train_data if split == "train" else val_data
             ix = torch.randint(len(d) - args.block - 1, (args.batch,))
             x = torch.stack([d[i:i + args.block] for i in ix])
-            y = torch.stack([d[i + 1:i + args.block + 1] for i in ix])  # target = next token
+            y = torch.stack([d[i + 1:i + args.block + 1] for i in ix])  
             return x.to(device), y.to(device)
 
     @torch.no_grad()
@@ -128,28 +128,28 @@ def build_tokenizer(texts, vocab_size):
         loss.backward()
         nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         opt.step()
-        if step % args.eval == 0 or step == args.steps - 1:
+        if step % args.eval_every == 0 or step == args.steps - 1:
             e = evaluate()
-            printf("step %d: train %.4f, val %.4f, time %.2f min" % (step, e["train"], e["val"], (time.time() - t0) / 60))
+            print("step %d: train %.4f, val %.4f, time %.2f min" % (step, e["train"], e["val"], (time.time() - t0) / 60))
             torch.save(model.state_dict(), CKPT)
 
-    printf("Done. Model saved to %s, tokenizer saved to %s" % (CKPT, TOK))
+    print("Done. Model saved to %s, tokenizer saved to %s" % (CKPT, TOK))
 
 
 def complete(model, tok, prompt, max_new=200, temperature=0.8):
     model.eval()
     ids = torch.tensor([tok.encode(prompt).ids], device=device)
-    out = model.generate(ids, max_new, temperature, stop_id_tok.token_to_id(EOS))
+    out = model.generate(ids, max_new, temperature, stop_id=tok.token_to_id(EOS))
     return tok.decode(out[0].tolist()).replace(EOS, "").strip()
 
 def chat(args):
     tok = Tokenizer.from_file(TOK)
     ck = torch.load(CKPT, map_location=device)
-    model = GPT(vocab=tok.get_vocab_size(), block=args.block, d=args.dim, n_layer=args.layer, n_head=args.head).to(device)
+    model = GPT(vocab=tok.get_vocab_size(), block=args.block, d=args.dim, n_layer=args.layers, n_head=args.heads).to(device)
     model.load_state_dict(ck)
-    printf("Model loaded. Type a prompt and press enter to generate a story. Type 'exit' to quit.")
+    print("Model loaded. Type a prompt and press enter to generate a story. Type 'exit' to quit.")
     while (prompt := input("Prompt: ")) != "exit":
-        story = complete(model, tok, prompt, max_new=args.max, temperature=args.temp)
+        story = complete(model, tok, prompt, max_new=args.max_new, temperature=args.temp)
         print("\n" + story + "\n")
 
 if __name__ == "__main__":
@@ -157,23 +157,16 @@ if __name__ == "__main__":
     ap.add_argument("mode", choices=["train", "chat"], help="train or chat")
     ap.add_argument("--text", help="path to text file with stories (one per paragraph)")
     ap.add_argument("--stories", type=int, default=100_000, help="number of stories to load from TinyStories dataset")
-    ap.add_argument("--vocab", type=int, default=128, help="vocabulary size for tokenizer")
+    ap.add_argument("--vocab", type=int, default=4096, help="vocabulary size for tokenizer")
     ap.add_argument("--block", type=int, default=128, help="context length")
     ap.add_argument("--dim", type=int, default=256)
-    ap.add_argument("--layers", type=int, default=256)
+    ap.add_argument("--layers", type=int, default=4)
     ap.add_argument("--heads", type=int, default=4)
     ap.add_argument("--batch", type=int, default=64)
     ap.add_argument("--steps", type=int, default=3000)
-    ap.add_argument("--lir", type=float, default=1e-3)
+    ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--eval-every", type=int, default=250)
     ap.add_argument("--max-new", type=int, default=200)
     ap.add_argument("--temp", type=float, default=0.8)
     args = ap.parse_args()
     train(args) if args.mode == "train" else chat(args)
-
-
-
-
-
-
-
