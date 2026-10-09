@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TinyStories-GPT</title>
+
+<style>
+
+  :root {
+    --night: #1f1424;      
+    --panel: #281c30;    
+    --ink: #f6f5f6;       
+    --muted: #eceff7;     
+    --moon: #8d406b;       
+    --user: #1c0622;       
+  }
+
+  
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    display: grid;          
+    place-items: center;
+    background: var(--night);
+    color: var(--ink);
+    font: 20px/1.5 Helvetica;
+  }
+
+  
+  .chat {
+    width: min(640px, 100%);
+    height: min(720px, 100dvh);
+    display: flex;
+    flex-direction: column;
+    background: var(--panel);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  header { padding: 1rem 1.25rem; border-bottom: 1px solid #ffffff1a; }
+  h1 { margin: 0; font-size: 1.15rem; }
+  header p { margin: .25rem 0 0; color: var(--muted); font-size: .9rem; }
+
+  #messages {
+    flex: 1;                 
+    overflow-y: auto;        
+    list-style: none;
+    margin: 0;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: .9rem;
+  }
+
+
+  .msg { max-width: 85%; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .user {
+    align-self: flex-end;
+    background: var(--user);
+    padding: .55rem .9rem;
+    border-radius: 14px 14px 4px 14px;
+  }
+  .bot {                      
+    align-self: flex-start;
+    font-family: Arial;
+    line-height: 1.65;
+    padding-left: .9rem;
+    border-left: 3px solid var(--moon);
+  }
+
+  
+  form { display: flex; gap: .6rem; padding: 1rem; border-top: 1px solid #ffffff1a; }
+  input {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    color: var(--ink);
+    background: var(--night);
+    border: 1px solid #ffffff2e;
+    border-radius: 10px;
+    padding: .65rem .85rem;
+  }
+  button {
+    font: inherit;
+    font-weight: 600;
+    color: var(--night);
+    background: var(--moon);
+    border: 0;
+    border-radius: 10px;
+    padding: .65rem 1rem;
+    cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: wait; }
+  button:hover:not(:disabled) { filter: brightness(1.08); }
+  input:focus-visible, button:focus-visible { outline: 2px solid var(--moon); outline-offset: 2px; }
+
+ 
+  @media (max-width: 520px) {
+    .chat { height: 100dvh; border-radius: 0; }
+  }
+</style>
+</head>
+
+<body>
+  
+  <main class="chat">
+    <header>
+      <h1>TinyStories-GPT</h1>
+      <p>Write the start of a story and the model continues it.</p>
+    </header>
+
+    <ol id="messages" aria-live="polite">
+      <li class="msg bot">Give a short prompt to the story, like "Once upon a time"</li>
+    </ol>
+
+    <form id="form">
+      <input id="input" type="text" placeholder="Once upon a time…" autocomplete="off" aria-label="Story beginning">
+      <button id="send" type="submit">Continue story</button>
+    </form>
+  </main>
+
+<script>
+  
+  const list = document.getElementById("messages");
+  const form = document.getElementById("form");
+  const input = document.getElementById("input");
+  const send = document.getElementById("send");
+
+  function addMessage(text, who) {
+    const li = document.createElement("li");
+    li.className = "msg " + who;
+    li.textContent = text;           
+    list.appendChild(li);
+    list.scrollTop = list.scrollHeight;
+    return li;
+  }
+
+async function getReply(prompt) {
+  const response = await fetch("/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt })
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "The server returned an error.");
+  return data.story;
+}
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();           
+    const text = input.value.trim();
+    if (!text) return;
+
+    addMessage(text, "user");
+    input.value = "";
+    send.disabled = true;
+    const reply = addMessage("Writing…", "bot");
+
+    try {
+      reply.textContent = await getReply(text);
+    } catch (err) {
+      reply.textContent = "Couldn't reach the model. Check that the server is running, then try again.";
+    }
+    send.disabled = false;
+    input.focus();
+  });
+</script>
+</body>
+</html>
